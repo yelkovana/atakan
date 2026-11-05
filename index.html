@@ -369,14 +369,14 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
   function update(){
     const r=career.getBoundingClientRect(), span=career.offsetHeight-innerHeight;
     const p=Math.min(1,Math.max(0,-r.top/span));
-    const HOLD=.08; // first stage (engineer + traffic) holds for a while before the line starts
-    const len=p<HOLD?0:(p-HOLD)/(1-HOLD)*TOT;
+    const len=p*TOT;
     const [x,y]=pointAt(Math.max(.01,len));
     dot.style.left=(x/10)+'%'; dot.style.top=(y/5)+'%'; revealR.setAttribute('width',Math.max(0,x+10));
     let st=0; for(let i=0;i<keyLen.length;i++) if(len>=keyLen[i]-.5) st=i;
     // show the panel of the leg we're on
     let leg=1; while(leg<keyLen.length-1 && len>keyLen[leg]) leg++;
-    const show=len<=.5?0:(len>=TOT-.5?K.length-1:leg);
+    // the engineer panel (traffic) stays while the line climbs most of the way to Reflexion
+    const show=len<=keyLen[1]*.6?0:(len>=TOT-.5?K.length-1:leg);
     dot.classList.toggle('down',!!K[show].down);
     evEls.forEach((e,i)=>e.classList.toggle('on',len>=keyLen[i]-.5||i===0));
     if(show!==cur){
