@@ -177,7 +177,7 @@ body{background:radial-gradient(1200px 700px at 80% -10%,rgba(79,124,255,.16),tr
   <div class="view">
     <div class="vhead">
       <h2>My career, as a chart. <em>Crashes included.</em></h2>
-      <span class="yr" id="stageNo">01/10</span>
+      <span class="yr" id="stageNo">2016</span>
     </div>
     <div class="plot" id="plot">
       <svg viewBox="0 0 1000 500" preserveAspectRatio="none" aria-hidden="true">
@@ -363,6 +363,7 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
   const panels=[...document.querySelectorAll('.pn')], vid=document.getElementById('vrV');
   // stage i is active while the line travels from key i-1 to key i (stage 0: start)
   const keyLen=keyIdx.map(i=>cum[i]);
+  const YEARS=['2016','2017','2018','2018–19','2020','2021','2022','2022–24','2024','2025','2026'];
   let cur=-1, trafficRun=null;
   function pointAt(len){let i=1;while(i<cum.length-1&&cum[i]<len)i++;const t=(len-cum[i-1])/((cum[i]-cum[i-1])||1);
     return [pts[i-1][0]+(pts[i][0]-pts[i-1][0])*t, pts[i-1][1]+(pts[i][1]-pts[i-1][1])*t]}
@@ -381,7 +382,7 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
     evEls.forEach((e,i)=>e.classList.toggle('on',len>=keyLen[i]-.5||i===0));
     if(show!==cur){
       cur=show; panels.forEach((pn,i)=>pn.classList.toggle('act',i===show));
-      stageNo.textContent=String(show+1).padStart(2,'0')+'/'+String(K.length).padStart(2,'0');
+      stageNo.textContent=YEARS[show];
       if(show===3){vid.play().catch(()=>{})}else vid.pause();
       if(trafficRun)trafficRun(show===0);
     }
