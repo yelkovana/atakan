@@ -152,6 +152,27 @@ body{background:radial-gradient(1200px 700px at 80% -10%,rgba(79,124,255,.16),tr
 .note{position:absolute;font-weight:900;color:#fff;pointer-events:none;animation:float 1.6s ease-out forwards}
 @keyframes float{0%{opacity:0;transform:translate(0,0) rotate(0)}15%{opacity:1}100%{opacity:0;transform:translate(var(--dx),-90px) rotate(var(--rot))}}
 .foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:clamp(70px,9vw,120px);padding-top:18px;border-top:1px solid rgba(255,255,255,.25);font-size:13px;color:rgba(255,255,255,.6)}
+
+/* ---------- phone ---------- */
+@media (max-width:640px){
+  .vhead{align-items:flex-start}
+  .vhead h2{font-size:20px}
+  .vhead .yr{font-size:22px;white-space:nowrap}
+  .panels{height:clamp(330px,50vh,420px)}
+  .pn{gap:12px}
+  .pn>*{min-width:0}
+  .pn h3{font-size:28px}
+  .pn p{font-size:15px;margin-top:10px}
+  .traffic{width:min(100%,250px)}
+  .logo-rx{width:170px;height:28px}
+  .rig{--u:1.9px}
+  .rxbox{gap:20px}
+  .apu{height:130px}
+  .chips{margin-top:12px}
+  .big{font-size:18vw}
+  .ev{font-size:10px}
+  .ev:not(.last){opacity:0}
+}
 </style>
 </head>
 <body>
@@ -380,6 +401,7 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
     const show=len<=keyLen[1]*.6?0:(len>=TOT-.5?K.length-1:leg);
     dot.classList.toggle('down',!!K[show].down);
     evEls.forEach((e,i)=>e.classList.toggle('on',len>=keyLen[i]-.5||i===0));
+    let lastEv=0; evEls.forEach((e,i)=>{if(e.classList.contains('on'))lastEv=i}); evEls.forEach((e,i)=>e.classList.toggle('last',i===lastEv));
     if(show!==cur){
       cur=show; panels.forEach((pn,i)=>pn.classList.toggle('act',i===show));
       stageNo.textContent=YEARS[show];
