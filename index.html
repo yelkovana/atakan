@@ -100,9 +100,9 @@ body{background:radial-gradient(1200px 700px at 80% -10%,rgba(79,124,255,.16),tr
 .big .cur{color:var(--muted);font-size:.5em;vertical-align:.62em;margin-right:.04em}
 .big .plus{color:var(--hot)}
 .big.red{color:var(--red);font-size:clamp(64px,9vw,150px);letter-spacing:-.05em}
-.mini-signal{display:flex;gap:10px;padding:14px;background:var(--card);border:1px solid var(--hair);border-radius:16px}
-.mini-signal i{width:38px;height:38px;border-radius:50%;background:#26335f;transition:background .3s}
-.mini-signal i.on.r{background:var(--red)}.mini-signal i.on.a{background:#f5a524}.mini-signal i.on.g{background:#16b364}
+.traffic{position:relative;height:min(100%,300px);aspect-ratio:16/10;max-width:42vw;border-radius:16px;overflow:hidden;background:var(--card);border:1px solid var(--hair)}
+.traffic canvas{position:absolute;inset:0;width:100%;height:100%}
+@media (max-width:860px){.traffic{height:auto;width:min(100%,300px);max-width:none}}
 .stepper{display:flex;gap:6px;margin-top:10px}
 .stepper i{width:22px;height:3px;border-radius:2px;background:var(--hair);transition:background .3s}
 .stepper i.on{background:var(--blue)}
@@ -110,7 +110,7 @@ body{background:radial-gradient(1200px 700px at 80% -10%,rgba(79,124,255,.16),tr
   .pn{grid-template-columns:1fr;align-content:start;gap:16px}
   .media{justify-content:flex-start;height:auto}
   .media video{height:auto;width:min(100%,360px)}
-  .panels{height:clamp(330px,46vh,420px)}
+  .panels{height:clamp(360px,60vh,500px)}
   .protos{gap:10px 20px}.pr img{width:38px;height:38px}.pr b{font-size:18px}
   .ev{font-size:11px}
   .big{font-size:22vw}
@@ -200,7 +200,7 @@ body{background:radial-gradient(1200px 700px at 80% -10%,rgba(79,124,255,.16),tr
       <div class="pn" data-i="0">
         <div><span class="k">The engineer</span><h3>Civil engineer. <em>Traffic, actually.</em></h3>
           <p>A master's in traffic engineering: optimisation, Python, smart signals. <b>The best offer paid just above minimum wage.</b> So I started my own company.</p></div>
-        <div class="media"><div class="mini-signal" id="sig"><i class="r"></i><i class="a"></i><i class="g"></i></div></div>
+        <div class="media"><div class="traffic" id="traffic" role="img" aria-label="Live adaptive traffic signal simulation"><canvas id="trafficC"></canvas></div></div>
       </div>
 
       <div class="pn" data-i="1">
@@ -363,7 +363,7 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
   const panels=[...document.querySelectorAll('.pn')], vid=document.getElementById('vrV');
   // stage i is active while the line travels from key i-1 to key i (stage 0: start)
   const keyLen=keyIdx.map(i=>cum[i]);
-  let cur=-1;
+  let cur=-1, trafficRun=null;
   function pointAt(len){let i=1;while(i<cum.length-1&&cum[i]<len)i++;const t=(len-cum[i-1])/((cum[i]-cum[i-1])||1);
     return [pts[i-1][0]+(pts[i][0]-pts[i-1][0])*t, pts[i-1][1]+(pts[i][1]-pts[i-1][1])*t]}
   function update(){
@@ -382,14 +382,87 @@ fr.addEventListener('pointermove',()=>{const now=performance.now();if(now-lastNo
       cur=show; panels.forEach((pn,i)=>pn.classList.toggle('act',i===show));
       stageNo.textContent=String(show+1).padStart(2,'0')+'/'+String(K.length).padStart(2,'0');
       if(show===3){vid.play().catch(()=>{})}else vid.pause();
+      if(trafficRun)trafficRun(show===0);
     }
   }
   addEventListener('scroll',()=>requestAnimationFrame(update),{passive:true});
   addEventListener('resize',update); update();
-  // little traffic signal in panel 0
-  const sig=[...document.querySelectorAll('#sig i')]; let ph=0;
-  const cyc=()=>{sig.forEach(i=>i.classList.remove('on'));sig[[2,1,0][ph%3]].classList.add('on');ph++};
-  cyc(); if(!reduceM) setInterval(cyc,1400);
+  // adaptive intersection in panel 0: signals switch by queue length, not a fixed timer
+  (()=>{
+    const box=document.getElementById('traffic'), cv=document.getElementById('trafficC'), ctx=cv.getContext('2d');
+    const VW=640, VH=400, CX=320, CY=200, RW=92, LANE=RW/4, CL=22, CWID=12, GAP=10, VMAX=110;
+    let s=1, run=false, raf=0, prev=0;
+    function size(){const r=box.getBoundingClientRect();if(!r.width)return;const dpr=Math.min(2,devicePixelRatio||1);cv.width=r.width*dpr;cv.height=r.height*dpr;s=cv.width/VW}
+    addEventListener('resize',()=>{size();draw()});
+    const D={
+      E:{x:-30,y:CY+LANE,dx:1,dy:0,stop:CX-RW/2-6,axis:'EW'},
+      W:{x:VW+30,y:CY-LANE,dx:-1,dy:0,stop:CX+RW/2+6,axis:'EW'},
+      S:{x:CX-LANE,y:-30,dx:0,dy:1,stop:CY-RW/2-6,axis:'NS'},
+      N:{x:CX+LANE,y:VH+30,dx:0,dy:-1,stop:CY+RW/2+6,axis:'NS'}
+    };
+    const rate={E:.55,W:.45,S:.3,N:.25};
+    const cars=[]; let green='EW', phase='green', tPhase=0;
+    const palette=['#4f7cff','#4f7cff','#8fa8ff','#c9d4ff','#ff6a2b'];
+    const along=c=>D[c.d].dx? c.x*D[c.d].dx : c.y*D[c.d].dy;
+    const stopP=d=>D[d].dx? D[d].stop*D[d].dx : D[d].stop*D[d].dy;
+    function spawn(d){
+      const o=D[d], last=cars.filter(c=>c.d===d).sort((a,b)=>along(a)-along(b))[0];
+      if(last && along(last)-(o.dx?o.x*o.dx:o.y*o.dy)<CL+GAP+6)return;
+      cars.push({d,x:o.x,y:o.y,v:VMAX*.8,col:palette[Math.random()*palette.length|0]});
+    }
+    const queue=axis=>cars.filter(c=>D[c.d].axis===axis && c.v<8 && along(c)<stopP(c.d)).length;
+    function step(dt){
+      for(const d in rate) if(Math.random()<rate[d]*dt) spawn(d);
+      tPhase+=dt;
+      const qG=queue(green), other=green==='EW'?'NS':'EW', qO=queue(other);
+      if(phase==='green' && tPhase>2.5 && (qO>qG+1 || tPhase>9 || (qG===0&&qO>0))){phase='amber';tPhase=0}
+      else if(phase==='amber' && tPhase>1.4){phase='clear';tPhase=0}
+      else if(phase==='clear' && tPhase>.8){green=other;phase='green';tPhase=0}
+      for(const d of ['E','W','S','N']){
+        const lane=cars.filter(c=>c.d===d).sort((a,b)=>along(b)-along(a));
+        lane.forEach((c,i)=>{
+          const p=along(c), front=p+CL/2, sp=stopP(d);
+          let limit=Infinity;
+          if(i>0) limit=along(lane[i-1])-CL-GAP;
+          const go=D[d].axis===green && phase==='green';
+          const amberGo=D[d].axis===green && phase==='amber' && front>sp-10;
+          if(!go && !amberGo && front<=sp+1) limit=Math.min(limit,sp-CL/2);
+          const want=Math.min(VMAX,Math.max(0,(limit-p)*3));
+          c.v+=(want-c.v)*Math.min(1,dt*4);
+          const np=Math.min(p+c.v*dt,limit===Infinity?1e9:Math.max(p,limit));
+          c.x+=D[d].dx*(np-p); c.y+=D[d].dy*(np-p);
+        });
+      }
+      for(let i=cars.length-1;i>=0;i--){const c=cars[i];if(c.x<-60||c.x>VW+60||c.y<-60||c.y>VH+60)cars.splice(i,1)}
+    }
+    function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h)}
+    function draw(){
+      ctx.setTransform(s,0,0,s,0,0);
+      ctx.fillStyle='#121a36';ctx.fillRect(0,0,VW,VH);
+      ctx.fillStyle='#1b2650';ctx.fillRect(0,CY-RW/2,VW,RW);ctx.fillRect(CX-RW/2,0,RW,VH);
+      ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=2;ctx.setLineDash([12,12]);
+      ctx.beginPath();ctx.moveTo(0,CY);ctx.lineTo(CX-RW/2,CY);ctx.moveTo(CX+RW/2,CY);ctx.lineTo(VW,CY);
+      ctx.moveTo(CX,0);ctx.lineTo(CX,CY-RW/2);ctx.moveTo(CX,CY+RW/2);ctx.lineTo(CX,VH);ctx.stroke();ctx.setLineDash([]);
+      ctx.lineWidth=4;ctx.strokeStyle='rgba(255,255,255,.5)';ctx.beginPath();
+      ctx.moveTo(CX-RW/2-4,CY);ctx.lineTo(CX-RW/2-4,CY+RW/2);ctx.moveTo(CX+RW/2+4,CY-RW/2);ctx.lineTo(CX+RW/2+4,CY);
+      ctx.moveTo(CX-RW/2,CY-RW/2-4);ctx.lineTo(CX,CY-RW/2-4);ctx.moveTo(CX,CY+RW/2+4);ctx.lineTo(CX+RW/2,CY+RW/2+4);ctx.stroke();
+      for(const c of cars){const h=D[c.d].dx!==0;ctx.fillStyle=c.col;rr(c.x-(h?CL:CWID)/2,c.y-(h?CWID:CL)/2,h?CL:CWID,h?CWID:CL,4);ctx.fill()}
+      const col=a=>a===green?(phase==='green'?'#16b364':phase==='amber'?'#f5a524':'#ff4d42'):'#ff4d42';
+      const heads=[[CX-RW/2-16,CY+RW/2+16,'EW'],[CX+RW/2+16,CY-RW/2-16,'EW'],[CX-RW/2-16,CY-RW/2-16,'NS'],[CX+RW/2+16,CY+RW/2+16,'NS']];
+      for(const [x,y,a] of heads){ctx.fillStyle='#0a0f1e';rr(x-10,y-10,20,20,6);ctx.fill();ctx.fillStyle=col(a);ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.fill()}
+      ctx.font='700 17px Archivo, sans-serif';ctx.fillStyle='#a3aed0';ctx.textBaseline='middle';
+      ctx.fillText('Main road  queue '+queue('EW'),18,CY+RW/2+26);
+      ctx.fillText('Side road  queue '+queue('NS'),CX+RW/2+26,22);
+    }
+    function loop(t){
+      raf=0; const dt=Math.min(.05,prev?(t-prev)/1000:.016); prev=t;
+      step(dt); draw();
+      if(run)raf=requestAnimationFrame(loop);
+    }
+    for(let i=0;i<400;i++)step(.033);
+    trafficRun=on=>{if(on){size();draw()} run=on&&!reduceM; if(run&&!raf){prev=0;raf=requestAnimationFrame(loop)}};
+    trafficRun(cur===0);
+  })();
 })();
 
 /* ---------- breakable name ---------- */
